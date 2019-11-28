@@ -1,9 +1,6 @@
 #include <Wire.h>
 #include "Adafruit_DRV2605.h"
 #include <Adafruit_NeoPixel.h>
-#ifdef __AVR__
- #include <avr/power.h> // Required for 16 MHz Adafruit Trinket
-#endif
 
 
 #define PIN 6 // Led ring pin
@@ -11,6 +8,9 @@
 #define fsrpin A0 // Force sensor pin
 #define NUMPIXELS 24 // NeoPixel ring led count
 #define DELAYVAL 20 // Time (in milliseconds) to pause between pixels
+#define LED_R 255
+#define LED_G 30
+#define LED_B 30
 
 
 Adafruit_DRV2605 drv; // Vibration motor
@@ -31,15 +31,6 @@ void setup()
   // I2C trigger by sending 'go' command 
   // default, internal trigger when sending GO command
   drv.setMode(DRV2605_MODE_INTTRIG); 
-
-
-  // Setup NeoPixel ring led
-  // These lines are specifically to support the Adafruit Trinket 5V 16 MHz.
-  // Any other board, you can remove this part (but no harm leaving it):
-  #if defined(__AVR_ATtiny85__) && (F_CPU == 16000000)
-    clock_prescale_set(clock_div_1);
-  #endif
-    // END of Trinket-specific code.
 
   pixels.begin(); // Initialize NeoPixel strip object
   pixels.setBrightness(100);
@@ -66,20 +57,20 @@ void loop()
   // If the user is handling the device we turn on the leds and play an heartrate vibration effect
   for(int i=0; i<NUMPIXELS; i++)
   {
-    pixels.setPixelColor(i, pixels.Color(255, 105, 115));
+    pixels.setPixelColor(i, pixels.Color(LED_R, LED_G, LED_B));
     pixels.show();
   }
 
   // Set the heartrate vibration effect
   // First pulse
-  drv.setWaveform(0, 1);
+  drv.setWaveform(0, 47);
   drv.setWaveform(1, 0);
   drv.go();
 
-  delay(100);
+  delay(300);
 
   // Second pulse
-  drv.setWaveform(0, 2);
+  drv.setWaveform(0, 48);
   drv.setWaveform(1, 0);
   drv.go();
 
