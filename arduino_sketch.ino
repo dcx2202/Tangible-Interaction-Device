@@ -1,28 +1,36 @@
-#include <Wire.h>
 #include "Adafruit_DRV2605.h"
 #include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
+// Pins
+#define LED_RING_PIN 6 // Led ring pin
+#define BUTTON_PIN 7 // Button pin (input)
+//#define fsrpin A0 // Force sensor pin
 
-#define PIN 6 // Led ring pin
-#define BUTTON_IN 7 // Button pin
-#define fsrpin A0 // Force sensor pin
-#define NUMPIXELS 24 // NeoPixel ring led count
-#define DELAYVAL 20 // Time (in milliseconds) to pause between pixels
-#define LED_R 255
-#define LED_G 30
-#define LED_B 30
+// Constants
+#define NUM_PIXELS 24 // NeoPixel ring LED count
+#define NUM_LOOP_SKIPS 100 // Number of loops to skip before updating the breathing effect ; higher = slower breathing effect
+#define WAIT_TIME 400 // Time to wait after the "exhale" phase of the breathing effect ; higer = longer
+#define HUE 370 // Hue of the pink color
 
-
+// Hardware objects
 Adafruit_DRV2605 drv; // Vibration motor
-Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800); // Setting up the NeoPixel library
-int fsrreading; //Variable to store FSR value
+Adafruit_NeoPixel pixels(NUM_PIXELS, LED_RING_PIN, NEO_GRB + NEO_KHZ800); // Setting up the NeoPixel library
+
+// Auxiliary Variables
+long loop_count; // Total loop count
+bool increasing; // Breathing effect direction
+int current_brightness; // Breathing effect current brightness
+int current_wait_time; // Time left to wait after the "exhale" phase of the breathing effect
+int heart_rate; // Time to wait between heartbeats
+int heart_pulses_interval; // Time to wait between each pulse in a heartbeat
 
 void setup()
 {
   Serial.begin(9600);
 
-  // Setup pin as input
-  pinMode(BUTTON_IN, INPUT);
+  // Setup BUTTON_PIN as input
+  pinMode(BUTTON_PIN, INPUT);
 
   // Setup vibration motor
   drv.begin();
@@ -33,33 +41,87 @@ void setup()
   drv.setMode(DRV2605_MODE_INTTRIG); 
 
   pixels.begin(); // Initialize NeoPixel strip object
-  pixels.setBrightness(100);
+  pixels.setBrightness(250); // Set starting brightness at 100%
+
+  // Initialize auxiliary variables
+  loop_count = 0;
+  increasing = true;
+  current_brightness = 0;
+  current_wait_time = 0;
+  heart_rate = 800;
+  heart_pulses_interval = 400;
+}
+
+void breathing_effect()
+{
+  // Limit the number of times we update the effect
+  if(loop_count % NUM_LOOP_SKIPS != 0)
+    return;
+
+  // Update the effect
+  // Wait for some time after the "exhale" phase if that's now
+  if(current_wait_time > 0)
+  {
+    current_wait_time--;
+    return;
+  }
+
+  // First phase
+  if(increasing)
+  {
+    // Increase the brightness until the max, then start decreasing
+    if(current_brightness < 255)
+      current_brightness++;
+    else
+    {
+      increasing = false;
+      current_brightness--;
+    }
+  }
+  // Second phase
+  else
+  {
+    // Decrease the brightness until the min, then start increasing
+    if(current_brightness > 0)
+      current_brightness--;
+    else
+    {
+      current_wait_time = WAIT_TIME;
+      increasing = true;
+      current_brightness++;
+    }
+  }
+  
+  pixels.fill(pixels.ColorHSV(HUE, 255, current_brightness));
+  pixels.show();
+}
+
+void heartbeat_effect()
+{
+  heart_pulses_interval = map(inoise16(loop_count, loop_count), 0, 65535, 300, 500);
+  heart_rate = map(inoise16(loop_count, loop_count), 0, 65535, 400, 1200);
 }
 
 void loop()
 {
-  // Read the FSR pin
-  fsrreading = analogRead(fsrpin);
-
-  // If the force sensor and the button aren't being pressed then the user
+  loop_count++;
+  heartbeat_effect();
+  
+  // If the button isn't being pressed then the user
   // isn't handling the device and we don't turn on the leds/vibration motor
-  if(digitalRead(BUTTON_IN) == LOW && fsrreading == 0)
+  if(digitalRead(BUTTON_PIN) == LOW)
   {
-    // Turn off all pixels
-    for(int i=0; i<NUMPIXELS; i++)
-    {
-      pixels.setPixelColor(i, pixels.Color(0, 0, 0));
-      pixels.show();
-    }
+    breathing_effect();
     return;
   }
+
+  increasing = false;
+  current_brightness = 255;
+  current_wait_time = 0;
   
   // If the user is handling the device we turn on the leds and play an heartrate vibration effect
-  for(int i=0; i<NUMPIXELS; i++)
-  {
-    pixels.setPixelColor(i, pixels.Color(LED_R, LED_G, LED_B));
-    pixels.show();
-  }
+  pixels.fill(pixels.ColorHSV(HUE, 255, 255));
+  pixels.show();
 
   // Set the heartrate vibration effect
   // First pulse
@@ -67,12 +129,12 @@ void loop()
   drv.setWaveform(1, 0);
   drv.go();
 
-  delay(300);
+  delay(heart_pulses_interval);
 
   // Second pulse
   drv.setWaveform(0, 48);
   drv.setWaveform(1, 0);
   drv.go();
 
-  delay(800);
+  delay(heart_rate);
 }
